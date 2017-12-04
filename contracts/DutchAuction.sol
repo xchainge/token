@@ -50,6 +50,9 @@ contract DutchAuction {
 
     uint public tokenMultiplier;
 
+    uint public softCap;
+    uint public minPrice;
+
     // Total number of Xei (XCT * multiplier) that will be auctioned
     uint public numTokensAuctioned;
 
@@ -69,6 +72,7 @@ contract DutchAuction {
         AuctionSetUp,
         AuctionStarted,
         AuctionEnded,
+        AuctionCanceled,
         TokensDistributed
     }
 
@@ -96,6 +100,7 @@ contract DutchAuction {
     event ClaimedTokens(address indexed _recipient, uint _sentAmount);
     event AuctionEnded(uint _finalPrice);
     event TokensDistributed();
+    event AuctionCanceled();
 
     /*
      * Public functions
@@ -130,7 +135,7 @@ contract DutchAuction {
     /// @notice Set `_tokenAddress` as the token address to be used in the auction.
     /// @dev Setup function sets external contracts addresses.
     /// @param _tokenAddress Token address.
-    function setup(address _tokenAddress) public isOwner atStage(Stages.AuctionDeployed) {
+    function setup(address _tokenAddress, uint _softCap, uint _minPrice) public isOwner atStage(Stages.AuctionDeployed) {
         require(_tokenAddress != 0x0);
         token = xChaingeToken(_tokenAddress);
 
@@ -139,6 +144,12 @@ contract DutchAuction {
 
         // Set the number of the token multiplier for its decimals
         tokenMultiplier = 10 ** uint(token.decimals());
+
+        require(softCap > 0);
+        softCap = _softCap;
+
+        require(minPrice > 0);
+        minPrice = _minPrice;
 
         stage = Stages.AuctionSetUp;
         Setup();
@@ -173,20 +184,31 @@ contract DutchAuction {
     /// @notice Finalize the auction - sets the final XCT token price and changes the auction
     /// stage after no bids are allowed anymore.
     /// @dev Finalize auction and set the final XCT token price.
-    function finalizeAuction() public atStage(Stages.AuctionStarted)
+    function finalizeAuction() public isOwner atStage(Stages.AuctionStarted)
     {
-        // Missing funds should be 0 at this point
-        uint missingFunds = missingFundsToEndAuction();
-        require(missingFunds == 0);
+        endTime = now;
+
+        if (receivedWei < softCap){
+            stage = Stages.AuctionCanceled;
+            AuctionCanceled();
+            return;
+        }
 
         // Send ETH to wallet
         walletAddress.transfer(receivedWei);
+
+        uint missingFunds = missingFundsToEndAuction();
+        if (missingFunds > 0){
+            uint soldTokens = tokenMultiplier * receivedWei / minPrice;
+            uint burnTokens = numTokensAuctioned - soldTokens;
+            token.burn(burnTokens);
+            numTokensAuctioned -= burnTokens;
+        }
 
         // Calculate the final price = WEI / XCT = WEI / (Xei / multiplier)
         // Reminder: numTokensAuctioned is the number of Xei (XCT * multiplier) that are auctioned
         finalPrice = tokenMultiplier * receivedWei / numTokensAuctioned;
 
-        endTime = now;
         stage = Stages.AuctionEnded;
         AuctionEnded(finalPrice);
 
@@ -273,6 +295,29 @@ contract DutchAuction {
         return true;
     }
 
+    /// @notice Withdraw ETH for `msg.sender` after the auction has canceled.
+    function withdraw() public atStage(Stages.AuctionCanceled) returns (bool) {
+        return proxyWithdraw(msg.sender);
+    }
+
+    /// @notice Withdraw ETH for `receiverAddress` after the auction has canceled.
+    /// @param receiverAddress ETH will be assigned to this address if eligible.
+    function proxyWithdraw(address receiverAddress) public atStage(Stages.AuctionCanceled) returns (bool) {
+        require(receiverAddress != 0x0);
+        
+        if (bids[receiverAddress] == 0) {
+            return false;
+        }
+
+        uint amount = bids[receiverAddress];
+        bids[receiverAddress] = 0;
+        
+        receiverAddress.transfer(amount);
+
+        assert(bids[receiverAddress] == 0);
+        return true;
+    }
+
     /// @notice Get the XCT price in WEI during the auction, at the time of
     /// calling this function. Returns `0` if auction has ended.
     /// Returns `priceStart` before auction has started.
@@ -280,6 +325,7 @@ contract DutchAuction {
     /// @return Returns WEI per XCT (Xei * multiplier).
     function price() public constant returns (uint) {
         if (stage == Stages.AuctionEnded ||
+            stage == Stages.AuctionCanceled ||
             stage == Stages.TokensDistributed) {
             return 0;
         }
@@ -321,6 +367,7 @@ contract DutchAuction {
         }
 
         uint decayRate = elapsed ** priceExponent / priceConstant;
-        return priceStart * (1 + elapsed) / (1 + elapsed + decayRate);
+        uint currentPrice = priceStart * (1 + elapsed) / (1 + elapsed + decayRate);
+        return minPrice > currentPrice ? minPrice : currentPrice;
     }
 }
