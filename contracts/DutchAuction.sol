@@ -146,11 +146,15 @@ contract DutchAuction {
     /// @notice Finalize the auction - sets the final XCT token price and changes the auction
     /// stage after no bids are allowed anymore.
     /// @dev Finalize auction and set the final XCT token price.
-    function finalizeAuction() public isOwner atStage(Stages.AuctionStarted)
+    function finalizeAuction() public atStage(Stages.AuctionStarted)
     {
+        require(price() == minPrice);
+
         endTime = now;
 
-        if (receivedWei < softCap){
+        if (receivedWei < softCap)
+        {
+            token.transfer(walletAddress, numTokensAuctioned);
             stage = Stages.AuctionCanceled;
             AuctionCanceled();
             return;
@@ -175,6 +179,14 @@ contract DutchAuction {
         AuctionEnded(finalPrice);
 
         assert(finalPrice > 0);
+    }
+
+    /// @notice Canceled the auction
+    function CancelAuction() public isOwner atStage(Stages.AuctionStarted)
+    {
+        token.transfer(walletAddress, numTokensAuctioned);
+        stage = Stages.AuctionCanceled;
+        AuctionCanceled();
     }
 
     /// --------------------------------- Auction Functions ------------------
