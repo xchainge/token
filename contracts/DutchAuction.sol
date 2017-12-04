@@ -15,8 +15,8 @@ contract DutchAuction {
      * multiplier set from token's number of decimals (i.e. 10 ** decimals)
      */
 
-    // Wait 7 days after the end of the auction, before anyone can claim tokens
-    uint constant public tokenClaimWaitingPeriod = 7 days;
+    // Wait 10 days after the end of the auction, before anyone can claim tokens
+    uint constant public tokenClaimWaitingPeriod = 10 days;
 
     /*
      * Storage
@@ -28,14 +28,10 @@ contract DutchAuction {
 
     // Price decay function parameters to be changed depending on the desired outcome
 
-    // Starting price in WEI; e.g. 2 * 10 ** 18
-    uint public priceStart;
-
-    // Divisor constant; e.g. 524880000
-    uint public priceConstant;
-
-    // Divisor exponent; e.g. 3
-    uint32 public priceExponent;
+    // Starting price in WEI;
+    uint constant public priceStart = 50000000000000000;    
+    uint constant public minPrice = 5000000000000000;
+    uint constant public softCap = 10000000000000000000000;
 
     // For calculating elapsed time for price
     uint public startTime;
@@ -49,9 +45,6 @@ contract DutchAuction {
     uint public fundsClaimed;
 
     uint public tokenMultiplier;
-
-    uint public softCap;
-    uint public minPrice;
 
     // Total number of Xei (XCT * multiplier) that will be auctioned
     uint public numTokensAuctioned;
@@ -93,7 +86,7 @@ contract DutchAuction {
      * Events
      */
 
-    event Deployed(uint indexed _priceStart, uint indexed _priceConstant, uint32 indexed _priceExponent);
+    event Deployed();
     event Setup();
     event AuctionStarted(uint indexed _startTime, uint indexed _blockNumber);
     event BidSubmission(address indexed _sender, uint _amount, uint _missingFunds);
@@ -108,23 +101,15 @@ contract DutchAuction {
 
     /// @dev Contract constructor function sets the starting price, divisor constant and
     /// divisor exponent for calculating the Dutch Auction price.
-    /// @param _priceStart High price in WEI at which the auction starts.
-    /// @param _priceConstant Auction price divisor constant.
-    /// @param _priceExponent Auction price divisor exponent.
-    function DutchAuction(
-        address _walletAddress,
-        uint _priceStart, 
-        uint _priceConstant, 
-        uint32 _priceExponent) 
-        public
+    /// @param _walletAddress Wallet address
+    function DutchAuction(address _walletAddress) public
     {
         require(_walletAddress != 0x0);
         walletAddress = _walletAddress;
 
         ownerAddress = msg.sender;
         stage = Stages.AuctionDeployed;
-        changeSettings(_priceStart, _priceConstant, _priceExponent);
-        Deployed(_priceStart, _priceConstant, _priceExponent);
+        Deployed();
     }
 
     /// @dev Fallback function for the contract, which calls bid() if the auction has started.
@@ -135,7 +120,7 @@ contract DutchAuction {
     /// @notice Set `_tokenAddress` as the token address to be used in the auction.
     /// @dev Setup function sets external contracts addresses.
     /// @param _tokenAddress Token address.
-    function setup(address _tokenAddress, uint _softCap, uint _minPrice) public isOwner atStage(Stages.AuctionDeployed) {
+    function setup(address _tokenAddress) public isOwner atStage(Stages.AuctionDeployed) {
         require(_tokenAddress != 0x0);
         token = xChaingeToken(_tokenAddress);
 
@@ -145,31 +130,8 @@ contract DutchAuction {
         // Set the number of the token multiplier for its decimals
         tokenMultiplier = 10 ** uint(token.decimals());
 
-        require(softCap > 0);
-        softCap = _softCap;
-
-        require(minPrice > 0);
-        minPrice = _minPrice;
-
         stage = Stages.AuctionSetUp;
         Setup();
-    }
-
-    /// @notice Set `_priceStart`, `_priceConstant` and `_priceXxponent` as
-    /// the new starting price, price divisor constant and price divisor exponent.
-    /// @dev Changes auction price function parameters before auction is started.
-    /// @param _priceStart Updated start price.
-    /// @param _priceConstant Updated price divisor constant.
-    /// @param _priceExponent Updated price divisor exponent.
-    function changeSettings(uint _priceStart, uint _priceConstant, uint32 _priceExponent) internal
-    {
-        require(stage == Stages.AuctionDeployed || stage == Stages.AuctionSetUp);
-        require(_priceStart > 0);
-        require(_priceConstant > 0);
-
-        priceStart = _priceStart;
-        priceConstant = _priceConstant;
-        priceExponent = _priceExponent;
     }
 
     /// @notice Start the auction.
@@ -199,7 +161,7 @@ contract DutchAuction {
 
         uint missingFunds = missingFundsToEndAuction();
         if (missingFunds > 0){
-            uint soldTokens = tokenMultiplier * receivedWei / minPrice;
+            uint soldTokens = tokenMultiplier * receivedWei / price();
             uint burnTokens = numTokensAuctioned - soldTokens;
             token.burn(burnTokens);
             numTokensAuctioned -= burnTokens;
@@ -366,7 +328,7 @@ contract DutchAuction {
             elapsed = now - startTime;
         }
 
-        uint decayRate = elapsed ** priceExponent / priceConstant;
+        uint decayRate = elapsed ** 3 / 579000000000;
         uint currentPrice = priceStart * (1 + elapsed) / (1 + elapsed + decayRate);
         return minPrice > currentPrice ? minPrice : currentPrice;
     }
