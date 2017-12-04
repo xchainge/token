@@ -18,10 +18,6 @@ contract DutchAuction {
     // Wait 7 days after the end of the auction, before anyone can claim tokens
     uint constant public tokenClaimWaitingPeriod = 7 days;
 
-    // Bid value over which the address has to be whitelisted
-    // At deployment moment, less than 1k$
-    uint constant public bidThreshold = 2.5 ether;
-
     /*
      * Storage
      */
@@ -29,7 +25,6 @@ contract DutchAuction {
     xChaingeToken public token;
     address public ownerAddress;
     address public walletAddress;
-    address public whitelisterAddress;
 
     // Price decay function parameters to be changed depending on the desired outcome
 
@@ -64,9 +59,6 @@ contract DutchAuction {
     // Bidder address => bid value
     mapping (address => uint) public bids;
 
-    // Whitelist for addresses that want to bid more than bidThreshold
-    mapping (address => bool) public whitelist;
-
     Stages public stage;
 
     /*
@@ -93,11 +85,6 @@ contract DutchAuction {
         _;
     }
 
-    modifier isWhitelister() {
-        require(msg.sender == whitelisterAddress);
-        _;
-    }
-
     /*
      * Events
      */
@@ -116,22 +103,18 @@ contract DutchAuction {
 
     /// @dev Contract constructor function sets the starting price, divisor constant and
     /// divisor exponent for calculating the Dutch Auction price.
-    /// @param _walletAddress Wallet address to which all contributed ETH will be forwarded.
     /// @param _priceStart High price in WEI at which the auction starts.
     /// @param _priceConstant Auction price divisor constant.
     /// @param _priceExponent Auction price divisor exponent.
     function DutchAuction(
-        address _walletAddress, 
-        address _whitelisterAddress, 
+        address _walletAddress,
         uint _priceStart, 
         uint _priceConstant, 
         uint32 _priceExponent) 
         public
     {
         require(_walletAddress != 0x0);
-        require(_whitelisterAddress != 0x0);
         walletAddress = _walletAddress;
-        whitelisterAddress = _whitelisterAddress;
 
         ownerAddress = msg.sender;
         stage = Stages.AuctionDeployed;
@@ -178,24 +161,6 @@ contract DutchAuction {
         priceExponent = _priceExponent;
     }
 
-    /// @notice Adds account addresses to whitelist.
-    /// @dev Adds account addresses to whitelist.
-    /// @param _bidderAddresses Array of addresses.
-    function addToWhitelist(address[] _bidderAddresses) public isWhitelister {
-        for (uint32 i = 0; i < _bidderAddresses.length; i++) {
-            whitelist[_bidderAddresses[i]] = true;
-        }
-    }
-
-    /// @notice Removes account addresses from whitelist.
-    /// @dev Removes account addresses from whitelist.
-    /// @param _bidderAddresses Array of addresses.
-    function removeFromWhitelist(address[] _bidderAddresses) public isWhitelister {
-        for (uint32 i = 0; i < _bidderAddresses.length; i++) {
-            whitelist[_bidderAddresses[i]] = false;
-        }
-    }
-
     /// @notice Start the auction.
     /// @dev Starts auction and sets startTime.
     function startAuction() public isOwner atStage(Stages.AuctionSetUp) {
@@ -213,6 +178,9 @@ contract DutchAuction {
         // Missing funds should be 0 at this point
         uint missingFunds = missingFundsToEndAuction();
         require(missingFunds == 0);
+
+        // Send ETH to wallet
+        walletAddress.transfer(receivedWei);
 
         // Calculate the final price = WEI / XCT = WEI / (Xei / multiplier)
         // Reminder: numTokensAuctioned is the number of Xei (XCT * multiplier) that are auctioned
@@ -233,7 +201,6 @@ contract DutchAuction {
     function bid() public payable atStage(Stages.AuctionStarted)
     {
         require(msg.value > 0);
-        require(bids[msg.sender] + msg.value <= bidThreshold || whitelist[msg.sender]);
         assert(bids[msg.sender] + msg.value >= msg.value);
 
         // Missing funds without the current bid value
@@ -245,9 +212,6 @@ contract DutchAuction {
 
         bids[msg.sender] += msg.value;
         receivedWei += msg.value;
-
-        // Send bid amount to wallet
-        walletAddress.transfer(msg.value);
 
         BidSubmission(msg.sender, msg.value, missingFunds);
 
