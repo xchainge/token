@@ -8,7 +8,7 @@ contract xChaingeToken is StandardToken {
     /*
      *  Terminology:
      *  1 token unit = Xei
-     *  1 token = XCT = Xei * multiplier
+     *  1 token = XCH = Xei * multiplier
      *  multiplier set from token's number of decimals (i.e. 10 ** decimals)
      */
 
@@ -16,7 +16,7 @@ contract xChaingeToken is StandardToken {
      *  Token metadata
      */
     string constant public name = "xChainge Token";
-    string constant public symbol = "XCT";
+    string constant public symbol = "XCH";
     uint8 constant public decimals = 18;
     uint constant multiplier = 10 ** uint(decimals);
 

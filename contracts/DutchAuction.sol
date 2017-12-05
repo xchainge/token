@@ -7,11 +7,11 @@ import './xChaingeToken.sol';
 /// Auction ends if a fixed number of tokens was sold.
 contract DutchAuction {
     /*
-     * Auction for the XCT Token.
+     * Auction for the XCH Token.
      *
      * Terminology:
      * 1 token unit = Xei
-     * 1 token = XCT = Xei * multiplier
+     * 1 token = XCH = Xei * multiplier
      * multiplier set from token's number of decimals (i.e. 10 ** decimals)
      */
 
@@ -46,10 +46,10 @@ contract DutchAuction {
 
     uint public tokenMultiplier;
 
-    // Total number of Xei (XCT * multiplier) that will be auctioned
+    // Total number of Xei (XCH * multiplier) that will be auctioned
     uint public numTokensAuctioned;
 
-    // Wei per XCT (Xei * multiplier)
+    // Wei per XCH (Xei * multiplier)
     uint public finalPrice;
 
     // Bidder address => bid value
@@ -124,7 +124,7 @@ contract DutchAuction {
         require(_tokenAddress != 0x0);
         token = xChaingeToken(_tokenAddress);
 
-        // Get number of Xei (XCT * multiplier) to be auctioned from token auction balance
+        // Get number of Xei (XCH * multiplier) to be auctioned from token auction balance
         numTokensAuctioned = token.balanceOf(address(this));
 
         // Set the number of the token multiplier for its decimals
@@ -143,9 +143,9 @@ contract DutchAuction {
         AuctionStarted(startTime, startBlock);
     }
 
-    /// @notice Finalize the auction - sets the final XCT token price and changes the auction
+    /// @notice Finalize the auction - sets the final XCH token price and changes the auction
     /// stage after no bids are allowed anymore.
-    /// @dev Finalize auction and set the final XCT token price.
+    /// @dev Finalize auction and set the final XCH token price.
     function finalizeAuction() public atStage(Stages.AuctionStarted)
     {
         require(price() == minPrice);
@@ -171,8 +171,8 @@ contract DutchAuction {
             numTokensAuctioned -= burnTokens;
         }
 
-        // Calculate the final price = WEI / XCT = WEI / (Xei / multiplier)
-        // Reminder: numTokensAuctioned is the number of Xei (XCT * multiplier) that are auctioned
+        // Calculate the final price = WEI / XCH = WEI / (Xei / multiplier)
+        // Reminder: numTokensAuctioned is the number of Xei (XCH * multiplier) that are auctioned
         finalPrice = tokenMultiplier * receivedWei / numTokensAuctioned;
 
         stage = Stages.AuctionEnded;
@@ -236,7 +236,7 @@ contract DutchAuction {
             return false;
         }
 
-        // Number of Xei = bid wei / Xei = bid wei / (wei per XCT * multiplier)
+        // Number of Xei = bid wei / Xei = bid wei / (wei per XCH * multiplier)
         uint num = (tokenMultiplier * bids[receiverAddress]) / finalPrice;
 
         // Due to finalPrice floor rounding, the number of assigned tokens may be higher
@@ -292,11 +292,11 @@ contract DutchAuction {
         return true;
     }
 
-    /// @notice Get the XCT price in WEI during the auction, at the time of
+    /// @notice Get the XCH price in WEI during the auction, at the time of
     /// calling this function. Returns `0` if auction has ended.
     /// Returns `priceStart` before auction has started.
-    /// @dev Calculates the current XCT token price in WEI.
-    /// @return Returns WEI per XCT (Xei * multiplier).
+    /// @dev Calculates the current XCH token price in WEI.
+    /// @return Returns WEI per XCH (Xei * multiplier).
     function price() public constant returns (uint) {
         if (stage == Stages.AuctionEnded ||
             stage == Stages.AuctionCanceled ||
@@ -307,12 +307,12 @@ contract DutchAuction {
     }
 
     /// @notice Get the missing funds needed to end the auction,
-    /// calculated at the current XCT price in WEI.
-    /// @dev The missing funds amount necessary to end the auction at the current XCT price in WEI.
+    /// calculated at the current XCH price in WEI.
+    /// @dev The missing funds amount necessary to end the auction at the current XCH price in WEI.
     /// @return Returns the missing funds amount in WEI.
     function missingFundsToEndAuction() constant public returns (uint) {
 
-        // numTokensAuctioned = total number of Xei (XCT * multiplier) that is auctioned
+        // numTokensAuctioned = total number of Xei (XCH * multiplier) that is auctioned
         uint requiredWeiAtPrice = numTokensAuctioned * price() / tokenMultiplier;
         if (requiredWeiAtPrice <= receivedWei) {
             return 0;
@@ -326,21 +326,21 @@ contract DutchAuction {
      *  Private functions
      */
 
-    /// @dev Calculates the token price (WEI / XCT) at the current timestamp
+    /// @dev Calculates the token price (WEI / XCH) at the current timestamp
     /// during the auction; elapsed time = 0 before auction starts.
     /// Based on the provided parameters, the price does not change in the first
     /// `priceConstant^(1/priceExponent)` seconds due to rounding.
     /// Rounding in `decayRate` also produces values that increase instead of decrease
     /// in the beginning; these spikes decrease over time and are noticeable
     /// only in first hours. This should be calculated before usage.
-    /// @return Returns the token price - Wei per XCT.
+    /// @return Returns the token price - Wei per XCH.
     function calcTokenPrice() constant private returns (uint) {
         uint elapsed;
         if (stage == Stages.AuctionStarted) {
             elapsed = now - startTime;
         }
 
-        uint decayRate = elapsed ** 3 / 579000000000;
+        uint decayRate = elapsed ** 3 / 541000000000;
         uint currentPrice = priceStart * (1 + elapsed) / (1 + elapsed + decayRate);
         return minPrice > currentPrice ? minPrice : currentPrice;
     }
